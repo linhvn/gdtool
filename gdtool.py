@@ -21,7 +21,6 @@ args = None
 # at ~/.credentials/drive-python-quickstart.json
 SCOPES = 'https://www.googleapis.com/auth/drive'
 CLIENT_SECRET_FILE = 'ian.json'
-# AUTHEN_KEY = {'ian' : 'AIzaSyCcHcC9TdzeAHcsCAjpKchRS74ucCr9omU', 'edw' : 'AIzaSyA3gDKOfXZ1QLtYwsQFzm-p61q2mgRU8j4'}
 ACCOUNT = 'ian'
 APPLICATION_NAME = 'Drive API Python Tool'
 CREDENTIAL_PATH = ''
