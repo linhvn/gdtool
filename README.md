@@ -68,7 +68,9 @@ To get ***COMMAND*** help, use command:
 python gdtool.py COMMAND --help
 ```
 <br />
+
 ### List commands
+
 ***adduser***:
 ```
 python gdtool.py adduser -f <OAUTH_JSON_FILE> [-i USER_ID] [-d]
