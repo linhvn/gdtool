@@ -848,7 +848,7 @@ def main():
   if CURRENT_USER_ID is None or CURRENT_USER_ID == '' :
     CURRENT_USER_ID = DEFAULT_USER_ID
 
-  if CURRENT_USER_ID == '' or not get_user_infor(CURRENT_USER_ID) :
+  if (command != 'adduser' and command != 'setuser') and (CURRENT_USER_ID == '' or not get_user_infor(CURRENT_USER_ID)) :
     print("Invalid user")
     return
 
