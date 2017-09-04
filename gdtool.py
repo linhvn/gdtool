@@ -2,6 +2,7 @@
 from __future__ import print_function
 import httplib2
 import os
+import io
 import sys
 import mimetypes
 import json
@@ -10,6 +11,7 @@ import urllib.parse
 from apiclient import discovery
 from apiclient import errors
 from apiclient.http import MediaFileUpload
+from apiclient.http import MediaIoBaseDownload
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
@@ -30,6 +32,7 @@ APPLICATION_CONFIGS = {}
 
 JSON_EXTENSION = '.json'
 ROOT_FOLDER_ID = 'root'
+DOC_MIME_TYPES = ['text/html', 'application/zip', 'text/plain', 'application/rtf', 'application/vnd.oasis.opendocument.text', 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/epub+zip', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/x-vnd.oasis.opendocument.spreadsheet', 'text/csv', 'text/tab-separated-values', 'image/jpeg', 'image/png', 'image/svg+xml', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/vnd.oasis.opendocument.presentation', 'application/vnd.google-apps.script+json']
 
 DEFAULT_USER_ID = ''
 CURRENT_USER_ID = ''
@@ -95,7 +98,6 @@ def _search_by_query(search_query) :
 
 
 
-
 def is_folder_exist_in_my_drive(folder_name, parent_id):
   folder_info = get_folder_info(folder_name, parent_id)
   if not folder_info or 'ownedByMe' not in folder_info: 
@@ -103,7 +105,6 @@ def is_folder_exist_in_my_drive(folder_name, parent_id):
   else :
     
     return folder_info['ownedByMe']
-
 
 
 
@@ -121,6 +122,32 @@ def get_folder_info(folder_name, parent_id):
     return []
 
   return folder_info[0]
+
+
+
+def is_file_name_in_my_drive(file_name, parent_id):
+  file_info = get_file_info_by_name(file_name, parent_id)
+  if not file_info or 'ownedByMe' not in file_info :
+    return False
+  else :
+    return file_info['ownedByMe']
+
+
+
+def get_file_info_by_name(file_name, parent_id):
+  if file_name is None or file_name == "" :
+    return []
+
+  search_query = "mimeType != 'application/vnd.google-apps.folder' and trashed = false and "
+  search_query += "name = '%s'" % (urllib.parse.quote_plus(file_name))
+  if(parent_id is not None):
+    search_query += " and '%s' in parents" % parent_id
+
+  file_info = _search_by_query(search_query)
+  if not file_info :
+    return []
+
+  return file_info[0]
 
 
 
@@ -222,6 +249,16 @@ def copy_file(file_id, file_name, parent_id):
     except errors.HttpError as error:
       print ('An error occurred on copy file: %s' % error)
 
+
+
+def delete_file(file_id):
+  try:
+    return service().files().delete(fileId=file_id).execute();
+  except errors.HttpError as e:
+    # print(e.__dict__)
+    if e.resp.status != 404 :
+      print("ERROR on get_file_info: " + str(e))
+    return None
 
 
 
@@ -328,6 +365,47 @@ def push_folder(path, parent_id) :
 
 
 
+### PULL FUNCTIONS
+def download_file(file_id, path) :
+  file_info = get_file_info(file_id);
+  path = os.path.join(path, file_info['name'])
+
+  request = None
+
+  # if file_info['mimeType'] in DOC_MIME_TYPES :
+  #   request = service().files().export_media(fileId=file_id, mimeType=file_info['mimeType'] )
+  # else :
+  request = service().files().get_media(fileId=file_id)
+
+  # fh = io.BytesIO()
+  fh = io.FileIO(path, 'wb')
+  downloader = MediaIoBaseDownload(fh, request, chunksize=2048*512)
+  done = False
+
+  while done is False:
+    status, done = downloader.next_chunk()
+    print("Download %d%%." % int(status.progress() * 100))
+
+  # with open(path, "wb") as f:
+  #   f.write(fh.getvalue())
+
+
+def download_folder(folder_id, path) :
+  folder_info = get_file_info(folder_id);
+  path = os.path.join(path, folder_info['name'])
+  if not os.path.exists(path) :
+    os.makedirs(path)
+
+  for file in get_list_files(folder_id) :
+    file_info = get_file_info(file['id']);
+    if file_info['mimeType'] == 'application/vnd.google-apps.folder' :
+      download_folder(file_info['id'], path)
+
+    else :
+      download_file(file_info['id'], path)
+
+
+
 ### SEARCH FUNCTIONS ###
 def search_folder(folder_name, parent_id):
   search_query = "mimeType='application/vnd.google-apps.folder' and trashed = false and 'me' in owners"
@@ -404,7 +482,7 @@ def print_search(search_result) :
 
 
 
-##### LIST #####
+##### ADD USER #####
 def add_user() :
   oauth_json_file = args.oauth_json_file
   user_id = args.user_id
@@ -442,6 +520,10 @@ def add_user() :
   print("Added user '%s'!" % user_id)
 
 
+
+
+
+##### SET USER #####
 def set_user() :
   user_id = args.user_id
   config_data = APPLICATION_CONFIGS
@@ -453,6 +535,25 @@ def set_user() :
 
   print("Set user '%s' as default!" % user_id)
 
+
+
+
+##### CREATE #####
+def create_dir() :
+  new_name = args.name
+  new_name = new_name.strip(' /\\')
+
+  if args.dir != None and args.dir != "" :
+    parent_folder = args.dir
+    new_name = parent_folder.strip('/\\') + "/" + new_name
+
+  create_folder(new_name, ROOT_FOLDER_ID)
+
+
+
+
+
+##### LIST #####
 def list_file():
   # link option
   link = args.link
@@ -554,6 +655,42 @@ def push():
 
 
 
+
+##### PULL #####
+def pull() :
+  path = args.path;
+  path = path.strip(' \\/')
+
+  to_dir = parse_path(".")
+  if args.to_dir != None and args.to_dir != "" :
+    to_dir = parse_path(args.to_dir)
+
+  if(len(path.split("/")) > 1 or len(path.split("\\")) > 1):
+    if(len(path.split("/")) > 1):
+      list_folder_name = path.split("/")
+    if(len(path.split("\\")) > 1):
+      list_folder_name = path.split("\\")
+
+    # is_file_name_in_my_drive(list_folder_name[len(list_folder_name) - 1], )
+    parent_path = list_folder_name[:-1]
+    parent_id = find_folder('/'.join(parent_path), ROOT_FOLDER_ID)
+    file_name = list_folder_name[-1]
+    if is_file_name_in_my_drive(file_name, parent_id) :
+      download_file(get_file_info_by_name(file_name, parent_id)['id'], to_dir)
+
+    if is_folder_exist_in_my_drive(file_name, parent_id) :
+      download_folder(get_folder_info(file_name, parent_id)['id'], to_dir)
+
+  else :
+    if is_file_name_in_my_drive(path, ROOT_FOLDER_ID) :
+      download_file(get_file_info_by_name(path, ROOT_FOLDER_ID)['id'], to_dir)
+
+    if is_folder_exist_in_my_drive(path, ROOT_FOLDER_ID) :
+      download_folder(get_folder_info(path, ROOT_FOLDER_ID)['id'], to_dir)
+
+
+
+
 ##### SEARCH #####
 def search():
   if args.file or args.folder : args.all = False
@@ -625,6 +762,37 @@ def search():
 
 
 
+##### DELETE
+def delete() :
+  path = args.path
+  path = path.strip(' \\/')
+
+  if(len(path.split("/")) > 1 or len(path.split("\\")) > 1):
+    if(len(path.split("/")) > 1):
+      list_folder_name = path.split("/")
+    if(len(path.split("\\")) > 1):
+      list_folder_name = path.split("\\")
+
+    # is_file_name_in_my_drive(list_folder_name[len(list_folder_name) - 1], )
+    parent_path = list_folder_name[:-1]
+    parent_id = find_folder('/'.join(parent_path), ROOT_FOLDER_ID)
+    file_name = list_folder_name[-1]
+    if is_file_name_in_my_drive(file_name, parent_id) :
+      delete_file(get_file_info_by_name(file_name, parent_id)['id'])
+    if is_folder_exist_in_my_drive(file_name, parent_id) :
+      delete_file(get_folder_info(file_name, parent_id)['id'])
+
+  else :
+    if is_file_name_in_my_drive(path, ROOT_FOLDER_ID) :
+      delete_file(get_file_info_by_name(path, ROOT_FOLDER_ID)['id'])
+
+    if is_folder_exist_in_my_drive(path, ROOT_FOLDER_ID) :
+      delete_file(get_folder_info(path, ROOT_FOLDER_ID)['id'])
+
+  print("'%s' deleted!" % path)
+
+
+
 ##### RESET #####
 def reset_app() :
   if os.path.exists(APPLICATION_CONFIG_FILE) :
@@ -646,6 +814,9 @@ def reset_app() :
         os.rmdir(os.path.join(root, name))
 
   print("All application configuration is cleared. Please add user to continue!")
+
+
+
 
 
 
@@ -703,6 +874,15 @@ try:
   parser_setuser.add_argument('user_id', help='User ID')
   parser_setuser.set_defaults(execute_command=set_user)
 
+  parser_create = _sub_arg_parser.add_parser('create', help='Create new folder/directory')
+  parser_create.add_argument('name', help='New folder name')
+  parser_create.add_argument('-d', '--dir', help="Parent folder")
+  parser_create.set_defaults(execute_command=create_dir)
+
+  parser_delete = _sub_arg_parser.add_parser('delete', help='Delete a folder or a file')
+  parser_delete.add_argument('path', help='Path to delete')
+  parser_delete.set_defaults(execute_command=delete)
+
   parser_list = _sub_arg_parser.add_parser('list', help='List of drive files')
   parser_list.add_argument('-d', '--dir', help='List of a directory name')
   parser_list.add_argument('-i', '--id', help='List of a drive ID')
@@ -719,6 +899,11 @@ try:
   parser_push.add_argument('path', help='Path  to push')
   parser_push.add_argument('-t', '--to-dir', help='The folder to save', dest='to_dir')
   parser_push.set_defaults(execute_command=push)
+
+  parser_pull = _sub_arg_parser.add_parser('pull', help='Download from Drive to local')
+  parser_pull.add_argument('path', help='Path to pull')
+  parser_pull.add_argument('-t', '--to-dir', help='The folder to save', dest='to_dir')
+  parser_pull.set_defaults(execute_command=pull)
 
   parser_search = _sub_arg_parser.add_parser('search', help='Search file in your drive')
   search_key_group = parser_search.add_mutually_exclusive_group(required=True);
