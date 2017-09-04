@@ -10,6 +10,7 @@ To run this quickstart, you'll need:
 - [x] The pip3 package management tool.
 - [x] Access to the internet and a web browser.
 - [x] A Google account with Google Drive enabled.
+
 Please ask google to prepare these tool.
 
 
@@ -66,7 +67,7 @@ To get ***COMMAND*** help, use command:
 ```
 python gdtool.py COMMAND --help
 ```
-<br /><br />
+<br />
 ### List commands
 ***adduser***:
 ```
